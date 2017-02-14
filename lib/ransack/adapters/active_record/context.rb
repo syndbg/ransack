@@ -250,7 +250,7 @@ module Ransack
         # Checkout active_record/relation/query_methods.rb +build_joins+ for
         # reference. Lots of duplicated code maybe we can avoid it
         def build_joins(relation)
-          buckets = relation.joins_values.group_by do |join|
+          buckets = [relation.joins_values + relation.left_outer_joins_values].group_by do |join|
             case join
             when String
               :string_join
