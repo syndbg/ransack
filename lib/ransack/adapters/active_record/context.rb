@@ -95,10 +95,12 @@ module Ransack
           # JoinDependency to track table aliases.
           #
           def join_sources
+            binding.pry
             base, joins =
             if ::ActiveRecord::VERSION::MAJOR >= 5
               [
                 Arel::SelectManager.new(@object.table),
+                @join_dependency.join_constraints(@object.left_outer_joins_values, @join_type),
                 @join_dependency.join_constraints(@object.joins_values, @join_type)
               ]
             else
@@ -126,6 +128,8 @@ module Ransack
           def join_sources
             base = Arel::SelectManager.new(@object.engine, @object.table)
             joins = @object.joins_values
+            joins << @object.left_outer_joins_values if ::ActiveRecord::VERSION::MAJOR >= 5
+
             joins.each do |assoc|
               assoc.join_to(base)
             end
@@ -148,6 +152,13 @@ module Ransack
             @join_dependency.join_root.children.delete_if { |stashed|
               stashed.eql?(association)
             }
+
+            if ::ActiveRecord::VERSION::MAJOR >= 5
+              @object.left_outer_joins_values.delete_if { |jd|
+                jd.join_root.children.map(&:object_id) == [association.object_id]
+              }
+            end
+
             @object.joins_values.delete_if { |jd|
               jd.join_root.children.map(&:object_id) == [association.object_id]
             }
@@ -186,6 +197,7 @@ module Ransack
           subquery = Arel::SelectManager.new(association.base_klass)
           subquery.from(join_root.left)
           subquery.project(correlated_key)
+          binding.pry
           join_constraints.each do |j|
             subquery.join_sources << Arel::Nodes::InnerJoin.new(j.left, j.right)
           end
@@ -250,7 +262,10 @@ module Ransack
         # Checkout active_record/relation/query_methods.rb +build_joins+ for
         # reference. Lots of duplicated code maybe we can avoid it
         def build_joins(relation)
-          buckets = [relation.joins_values + relation.left_outer_joins_values].group_by do |join|
+          buckets = relation.joins_values
+          buckets += relation.left_outer_joins_values if ::ActiveRecord::VERSION::MAJOR >= 5
+
+          buckets = buckets.group_by do |join|
             case join
             when String
               :string_join
